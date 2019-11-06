@@ -1,0 +1,29 @@
+@startuml
+
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 160
+
+actor "JSON-RPC Client" as C
+
+participant "ServerHandlerImp class" as S #lightgreen
+participant "JobQueue class" as J
+participant "RPC namespace" as R
+participant "HandlerTable class" as H #lightgreen
+
+C -> S: onRequest() 
+S -> J: postCoro() \npost to job queue
+J -> S: processSession() \njob queue thread starts process the job 
+S -> S: \nprocessRequest() 
+activate S
+hnote over S: parse the request including\n<font color=blue><b>api_version number,\ncreate "RPC::Context" modified to \ninclude <font color=blue><b>api_version number 
+S -> R: doCommand() \nto fill RPC response
+R -> H: getHandler() \ncalled through RPC::fillHandler()
+hnote over H: the handlers will be stored in \n<font color=blue><b>array<map<name, Handler>,\n<font color=blue><b>NumVersionSupported>
+H -> R: return the handler
+R -> R: callMethod() \ninvoke the handler and get response
+R -> S: RPC response filled
+S -> C: ripple::HTTPReply() \nsend response to client
+
+
+@enduml
