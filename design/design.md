@@ -145,7 +145,7 @@ Add an "api_version" field in the request to indicate which API version the requ
     "method": "...",
     "params": [
         {
-            "api_version": 2,
+            "api_version": 1,
             ...
         }
     ]
@@ -168,7 +168,7 @@ Add an "api_version" field in the request to indicate which API version the requ
 
 ```
 {
-    "api_version": 2,
+    "api_version": 1,
     "id": 4,
     "command": "...",
     ...
@@ -187,13 +187,13 @@ The RPC command and its parameters passed to rippled command line are parsed fir
 
 The version number of gRPC requests are specified as part of the package name of gRPC’s service definition in .proto files. Some of the well known projects (such as [uber](https://github.com/uber/prototool/blob/dev/style/README.md#package-versioning) and [envoy](https://github.com/envoyproxy/data-plane-api/tree/master/envoy/api)) use this approach. We recommend to place the .proto files of different versions in version specific folders. 
 
-The example .proto file defines a version 2 service “Greeter” that has an RPC function “SayHello”.
+The example .proto file defines a version 1 service “Greeter” that has an RPC function “SayHello”.
 
 
 ```
 syntax = "proto3";
 
-package helloworld.v2;
+package helloworld.v1;
 import "helloworld_msg.proto";
 
 service Greeter {
@@ -208,12 +208,12 @@ In the generated cpp file, the package name is translated to namespaces. Among o
 ```
 ...
 namespace helloworld {
-namespace v2 {
+namespace v1 {
 
 class Greeter final {
  public:
   static constexpr char const* service_full_name() {
-    return "helloworld.v2.Greeter";
+    return "helloworld.v1.Greeter";
   }
   
   //server side
@@ -231,24 +231,29 @@ class Greeter final {
 ```
 
 
-At the gRPC server side, multiple versions of the API are created by constructing multiple services, e.g. helloworld::v2::Greeter::AsyncService. The services are located in different namespaces. They are simply different services from gRPC’s point of view. All of the services can be registered to a single gRPC server. 
+At the gRPC server side, multiple versions of the API are created by constructing multiple services, e.g. helloworld::v1::Greeter::AsyncService. The services are located in different namespaces. They are simply different services from gRPC’s point of view. All of the services can be registered to a single gRPC server. 
 
-The gRPC client must know the gRPC server’s IP:port to connect. Once connected, the client can invoke RPCs from different API versions by constructing the stubs from different namespaces and then calling the stub methods. ([In distributed computing, a stub means a piece of code that converts parameters passed between client and server.](https://en.wikipedia.org/wiki/Stub_(distributed_computing)) In the example above, helloworld::v2::Greeter::Stub is the client side class for invoking the RPC.) The matching of a client stub to the corresponding server service is done by the generated gRPC code behind the scenes. 
+The gRPC client must know the gRPC server’s IP:port to connect. Once connected, the client can invoke RPCs from different API versions by constructing the stubs from different namespaces and then calling the stub methods. ([In distributed computing, a stub means a piece of code that converts parameters passed between client and server.](https://en.wikipedia.org/wiki/Stub_(distributed_computing)) In the example above, helloworld::v1::Greeter::Stub is the client side class for invoking the RPC.) The matching of a client stub to the corresponding server service is done by the generated gRPC code behind the scenes. 
+
+
+### Future work
 
 
 #### The “Version” RPC function
 
 One of the existing RPC functions is the Version function. When invoked, it currently replies: 
-
+```
 "Version":{"first":"1.0.0","good":"1.0.0","last":"1.0.0"}
+```
+With the planned change, if request’s api_version is 1 or missing, it will reply:
+```
+"Version":{"first":"1.0.0","good":"2.0.0","last":"2.0.0"}
+```
+If request’s api_version is 2, it will reply:
+```
+"Version":{"api_version_high":2,"api_version_low":1}, 
+```
 
-With the planned change, it will reply
-
-"Version":{"first":"1.0.0","good":"2.0.0","last":"2.0.0"}, if request’s api_version is 1 or missing
-
-"Version":{"api_version_high":2,"api_version_low":1}, if request’s api_version is 2
-
-
-#### Future work
+#### JSON-gRPC transcoding
 
 According to the current design of the [native support for gRPC in rippled](https://github.com/cjcobb23/grpcRippledDesign/blob/master/design/design.md), the code paths of processing a gRPC request and processing other types of requests are in parallel. The design of transcoding gRPC requests to JSON formatted requests which can be handled by the existing set of handlers was considered and discarded. In the future, it may be desirable to merge the code paths to provide a unified RPC approach with single source of truth. One approach is by transcoding JSON formatted requests to protobuf requests (via [protobuf’s json_util](https://developers.google.com/protocol-buffers/docs/reference/cpp/google.protobuf.util.json_util), or other ways), and then invoking the protobuf requests’ handlers, the version number and command name should be parsed out and used to locate the handler. I.e., we may need something similar to the current rippled’s HandlerTable class. 
